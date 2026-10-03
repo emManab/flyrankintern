@@ -1,15 +1,126 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Content Refresh Prioritization</title>
-<style>body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;line-height:1.6}table{border-collapse:collapse;width:100%}th,td{padding:8px;border:1px solid #ddd;text-align:left}code{background:#f4f4f4;padding:2px 4px}</style></head>
-<body><h1>Content Refresh Prioritization</h1>
-<h2>Abstract</h2><p>This project asks how an editorial team can rank existing content pages for refresh review when review capacity is limited. The anonymized starter release contains 30,000 content items across 32 pseudonymized clients. A transparent rule baseline is compared with supervised models using a client-aware holdout and Precision@50. The bundled reference run measured 0.240 Precision@50 for the baseline and about 0.740 for the random forest, against a 0.542 label base rate. The output is decision-support for human review, not causal evidence that refreshing a page will improve traffic.</p>
-<h2>Problem</h2><p>Editors need an ordered review queue rather than an undifferentiated list. False positives cost review time; false negatives can leave useful review opportunities unattended.</p>
-<h2>Data</h2><p>The public-safe release uses pseudonymized content items and aggregated activity. Label-derived trend fields, IDs, product flags, private identifiers and unsafe future windows are excluded from model features.</p>
-<h2>Methodology</h2><p>The target is <code>trend_direction == down</code>. The baseline combines visibility, freshness, position and content-depth signals. Logistic regression, a decision tree and a random forest provide learned ranking scores. Client-aware validation is preferred to avoid sharing client-specific patterns between train and test.</p>
-<h2>Results</h2><table><tr><th>Method</th><th>ROC AUC</th><th>Average precision</th><th>Precision@50</th></tr><tr><td>Baseline</td><td>0.627</td><td>0.468</td><td>0.240</td></tr><tr><td>Logistic regression</td><td>0.700</td><td>0.522</td><td>0.400</td></tr><tr><td>Decision tree</td><td>0.742</td><td>0.575</td><td>0.540</td></tr><tr><td>Random forest</td><td>0.750</td><td>0.618</td><td>0.740</td></tr></table>
-<p><strong>Base rate:</strong> 0.542. The exact third decimal can vary with library versions.</p>
-<h2>Limitations</h2><p>The label is a snapshot-derived trend indicator, not a treatment outcome. The panel is unbalanced, some history is source-limited, and recent windows can overlap depending on release. Model importance is not causality, and the system does not predict Google's algorithm.</p>
-<h2>Ranked recommendations</h2><ol><li>Inspect high-confidence pages with multiple supporting reason codes.</li><li>Review CTR/search-intent alignment for visible low-CTR pages.</li><li>Inspect completeness before expanding thin content.</li><li>Review engagement and page experience for engagement candidates.</li><li>Monitor lower-confidence items until new evidence changes their priority.</li></ol>
-<h2>Reproducibility</h2><p>Run scripts 01 through 04 in order from the repository root. The modeling seed is 42. The full analysis is documented in <code>work/notebooks/</code>.</p>
-<h2>Acknowledgments &amp; data credit</h2><p>Built on the FlyRank ML Internship dataset. <a href="https://flyrank.ai">FlyRank</a></p>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Freestyle Search Intelligence — Content Risk Ranking</title>
+<meta name="description" content="A reproducible FlyRank Search Intelligence capstone on ranking pages for human review using public-safe search and content signals.">
+<style>
+:root{--bg:#07111f;--panel:#0d1b2d;--panel2:#10233a;--text:#eaf2ff;--muted:#9db0c9;--line:#203550;--accent:#8ed0ff;--accent2:#b8f2d0;--white:#fff}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 80% 0,#163457 0,transparent 35%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.65}
+a{color:var(--accent)}.wrap{max-width:1120px;margin:auto;padding:28px 22px 90px}.nav{display:flex;justify-content:space-between;align-items:center;padding:8px 0 34px}.brand{font-weight:800;letter-spacing:.02em}.nav a{margin-left:18px;text-decoration:none;color:var(--muted);font-size:14px}
+.hero{padding:54px 0 40px}.eyebrow{color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.13em;font-size:12px}.hero h1{font-size:clamp(42px,7vw,78px);line-height:.98;max-width:900px;margin:14px 0 22px;letter-spacing:-.055em}.hero p{max-width:820px;color:var(--muted);font-size:19px}.pill{display:inline-block;border:1px solid var(--line);background:#0b1727;border-radius:999px;padding:6px 11px;color:var(--muted);font-size:13px;margin:4px 6px 0 0}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:30px 0 70px}.metric{background:rgba(13,27,45,.8);border:1px solid var(--line);border-radius:18px;padding:20px}.metric strong{display:block;font-size:30px}.metric span{color:var(--muted);font-size:13px}
+section{margin:0 0 72px}.kicker{color:var(--accent);font-weight:750;font-size:13px;text-transform:uppercase;letter-spacing:.1em}h2{font-size:34px;letter-spacing:-.03em;margin:6px 0 18px}h3{font-size:20px;margin-top:26px}.lede{font-size:18px;color:#c8d6e8;max-width:900px}
+.cardgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:rgba(13,27,45,.72);border:1px solid var(--line);border-radius:18px;padding:22px}.card p,.card li{color:var(--muted)}
+table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:rgba(13,27,45,.72)}th,td{padding:14px 16px;border-bottom:1px solid var(--line);text-align:left}th{color:#cfe1f6;font-size:13px;text-transform:uppercase;letter-spacing:.06em}td{color:#c4d3e5}tr:last-child td{border-bottom:0}.highlight{background:#122a3b}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}.chart{background:#fff;border-radius:16px;padding:12px;min-height:220px}.chart img{max-width:100%;width:100%;height:auto}
+ol{padding-left:22px}.recommend{display:grid;grid-template-columns:54px 1fr;gap:16px;padding:18px 0;border-top:1px solid var(--line)}.num{font-size:25px;color:var(--accent);font-weight:800}.recommend strong{font-size:18px}.recommend p{margin:4px 0;color:var(--muted)}
+pre{background:#06101d;border:1px solid var(--line);border-radius:14px;padding:18px;overflow:auto;color:#cfe3f7}.footer{padding-top:35px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+@media(max-width:800px){.grid,.cardgrid,.charts{grid-template-columns:1fr 1fr}.hero h1{font-size:48px}.nav{align-items:flex-start}.nav a{margin-left:8px}}
+@media(max-width:560px){.grid,.cardgrid,.charts{grid-template-columns:1fr}.nav{display:block}.nav div:last-child{margin-top:12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="nav"><div class="brand">FLYRANK / SEARCH INTELLIGENCE</div><div><a href="#results">Results</a><a href="#method">Method</a><a href="#recommendations">Actions</a></div></nav>
+
+<header class="hero">
+<div class="eyebrow">Freestyle Capstone · 2026</div>
+<h1>Can search signals rank pages worth investigating?</h1>
+<p>A reproducible study of how public-safe search, content, and engagement signals can be combined into a review-priority ranking—without treating association as causation or claiming to model Google's algorithm.</p>
+<div><span class="pill">30,000 content items</span><span class="pill">90-day activity</span><span class="pill">client-aware holdout</span><span class="pill">human-in-the-loop</span></div>
+</header>
+
+<div class="grid">
+<div class="metric"><strong>0.740</strong><span>Random forest Precision@50</span></div>
+<div class="metric"><strong>0.240</strong><span>Baseline Precision@50</span></div>
+<div class="metric"><strong>0.750</strong><span>Random forest ROC AUC</span></div>
+<div class="metric"><strong>0.542</strong><span>Decline-label base rate</span></div>
+</div>
+
+<section>
+<div class="kicker">Abstract</div><h2>What was tested?</h2>
+<p class="lede">This study asks whether a compact set of public-safe search and content signals can rank pages for human review when the observed data contains an associated performance-decline label. I use the FlyRank anonymized starter release of 30,000 pseudonymized content items with 90-day activity and content-context fields. I compare a transparent rule baseline with logistic regression, a decision tree, and a random forest using a client-aware holdout, while excluding label-derived trend fields and pseudonymous IDs from the feature vector. In the bundled reference run, Precision@50 was 0.240 for the baseline and about 0.740 for the random forest, with a 0.542 decline-label base rate. The resulting ranked queue is decision support for human review and signal discovery, not a causal estimate of traffic impact or a prediction of Google's ranking system.</p>
+</section>
+
+<section>
+<div class="kicker">Problem</div><h2>A ranking problem, not an autopilot</h2>
+<p class="lede">When review capacity is limited, an editor needs an ordered queue. The system scores each pseudonymized content item, attaches reason codes, and suggests a review category. The human still verifies the page and decides whether to act.</p>
+<div class="cardgrid">
+<div class="card"><h3>Unit</h3><p>One pseudonymized content item.</p></div>
+<div class="card"><h3>Output</h3><p>Risk score, rank, confidence, and reason codes.</p></div>
+<div class="card"><h3>Decision</h3><p>Inspect, review metadata, expand, refresh, or monitor.</p></div>
+</div>
+</section>
+
+<section id="method">
+<div class="kicker">Data & Methodology</div><h2>Designed around leakage control</h2>
+<div class="cardgrid">
+<div class="card"><h3>Data</h3><p>Public-safe anonymized starter release with about 30k items and 90-day aggregates.</p></div>
+<div class="card"><h3>Label</h3><p><code>trend_direction == "down"</code>. This is a snapshot-derived proxy, not a clean future outcome.</p></div>
+<div class="card"><h3>Excluded</h3><p>Trend fields, IDs as features, and future/overlapping outcome fields. Client ID is grouping-only.</p></div>
+<div class="card"><h3>Baseline</h3><p>Transparent score combining visibility, freshness, position opportunity, and content depth.</p></div>
+<div class="card"><h3>Models</h3><p>Logistic regression, decision tree, and random forest.</p></div>
+<div class="card"><h3>Validation</h3><p>Client-aware holdout to reduce the risk of learning client-specific patterns.</p></div>
+</div>
+</section>
+
+<section id="results">
+<div class="kicker">Results</div><h2>Model vs baseline</h2>
+<table><thead><tr><th>Method</th><th>ROC AUC</th><th>Average precision</th><th>Precision@50</th></tr></thead>
+<tbody>
+<tr><td>Baseline rules</td><td>0.627</td><td>0.468</td><td>0.240</td></tr>
+<tr><td>Logistic regression</td><td>0.700</td><td>0.522</td><td>0.400</td></tr>
+<tr><td>Decision tree</td><td>0.742</td><td>0.575</td><td>0.540</td></tr>
+<tr class="highlight"><td><strong>Random forest</strong></td><td><strong>0.750</strong></td><td><strong>0.618</strong></td><td><strong>0.740</strong></td></tr>
+</tbody></table>
+<p class="lede">The 0.542 label base rate matters: Precision@50 should not be interpreted without it. Exact tree-ensemble decimals can vary with library versions; the stable takeaway is the observed ranking separation in this release.</p>
+<div class="charts">
+<div class="chart"><img src="https://raw.githubusercontent.com/emManab/flyrankintern/main/outputs/charts/top_feature_importance.svg" alt="Top feature importance"></div>
+<div class="chart"><img src="https://raw.githubusercontent.com/emManab/flyrankintern/main/outputs/charts/action_mix.svg" alt="Action mix"></div>
+<div class="chart"><img src="https://raw.githubusercontent.com/emManab/flyrankintern/main/outputs/charts/confidence_mix.svg" alt="Confidence mix"></div>
+<div class="chart"><img src="https://raw.githubusercontent.com/emManab/flyrankintern/main/outputs/charts/top_reason_codes.svg" alt="Top reason codes"></div>
+</div>
+</section>
+
+<section>
+<div class="kicker">Interpretation</div><h2>What the model is actually seeing</h2>
+<p class="lede">The leading observed signals include days with impressions, logged impressions, average position, content age, content length, clicks, CTR, and engagement measures. In this dataset, these signals help distinguish rows associated with the decline label. They should be treated as associations used for prioritization—not levers proven to cause an outcome.</p>
+</section>
+
+<section id="recommendations">
+<div class="kicker">Ranked Recommendations</div><h2>Turn a score into a review playbook</h2>
+<div class="recommend"><div class="num">01</div><div><strong>Inspect high-confidence multi-signal pages</strong><p>Start with pages supported by several reason codes rather than a single noisy signal.</p></div></div>
+<div class="recommend"><div class="num">02</div><div><strong>Review visible low-CTR pages</strong><p>Check title/snippet and search-intent alignment before changing the page itself.</p></div></div>
+<div class="recommend"><div class="num">03</div><div><strong>Inspect thin visible pages</strong><p>Check completeness and intent coverage before expanding content.</p></div></div>
+<div class="recommend"><div class="num">04</div><div><strong>Review engagement candidates</strong><p>Inspect usefulness and page experience before changing copy.</p></div></div>
+<div class="recommend"><div class="num">05</div><div><strong>Monitor low-confidence items</strong><p>Wait for stronger evidence instead of turning every score into an automatic action.</p></div></div>
+</section>
+
+<section>
+<div class="kicker">Limitations</div><h2>What this study cannot prove</h2>
+<div class="cardgrid">
+<div class="card"><h3>Snapshot proxy</h3><p>The decline label is derived from the observed snapshot, not a clean future-window outcome.</p></div>
+<div class="card"><h3>No causal effect</h3><p>The design cannot show that refreshing a page causes better traffic, ranking, clicks, or engagement.</p></div>
+<div class="card"><h3>Scope</h3><p>Results describe this anonymized release and should not be generalized to every site or search system.</p></div>
+</div>
+</section>
+
+<section>
+<div class="kicker">Reproducibility</div><h2>Everything needed to rerun the study</h2>
+<p>From a fresh clone:</p>
+<pre>pip install -r requirements.txt
+python scripts/run_all.py</pre>
+<p>Capstone notebook: <code>work/notebooks/capstone.ipynb</code><br>
+Report source: <code>work/capstone_report.md</code><br>
+Paper source: <code>docs/index.html</code><br>
+Submission pointer: <code>submission/paper_url.txt</code></p>
+</section>
+
+<footer class="footer">
+<strong>Acknowledgments & data credit</strong><br>
+Built on the FlyRank ML Internship dataset · <a href="https://flyrank.ai">FlyRank</a> · Public-safe, decision-support framing.
+</footer>
+</div>
 </body></html>
